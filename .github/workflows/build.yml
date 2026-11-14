@@ -17,7 +17,7 @@ jobs:
 
       - name: Download ISO
         run: |
-          curl -L --retry 10 --retry-delay 30 --max-time 600 -o android-x86.iso "https://github.com/a30464845-prog/infinix-android/releases/download/v1/android-x86-7.1-r5-k419.iso"
+          curl -L --retry 10 --retry-delay 30 --max-time 600 -o android-x86.iso "https://download1980.mediafire.com/gmo894tu9ttg0h7-QMCrDaca2o-W9juuixVhQiCcyN7Fl3wrlI08hxa2nwTq8WLNfX29hP9OzGvO3Rif5NIdBBXUImv7vC26QtzUfFN5UKU6Byi3cHIQYJAZKC8nNe2uXD2K_o6-qaoE3r9f2bMNcVwUCs_krwlZ3HuhK3eyJYyXfQ/g4j56r1ox5wzwd2/android-x86-7.1-r5-k419.iso"
           ls -la android-x86.iso
           file android-x86.iso
 
