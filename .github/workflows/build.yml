@@ -1,0 +1,133 @@
+name: Build Window 7 Free Fire
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt update
+          sudo apt install -y p7zip-full squashfs-tools xorriso e2fsprogs
+
+      - name: Download ISO
+        run: |
+          curl -L --retry 10 --retry-delay 30 --max-time 600 -o android-x86.iso "https://github.com/a30464845-prog/infinix-android/releases/download/v1/android-x86-7.1-r5-k419.iso"
+          ls -la android-x86.iso
+          file android-x86.iso
+
+      - name: Download APKs
+        run: |
+          curl -L --retry 10 --retry-delay 30 --max-time 600 -o apks.rar "https://download1589.mediafire.com/lysj76r9v46gG3BCDU7Q34JIsq0ds1rQQCnrR178lUo5x-a9oOW2lTtwzt2Mas0QVVSHsIpc7LUhSTCbxvONmVGnedEuUjT-ORBNAwK9pXwvc4lJ-CJLeKxShc4JBVRq1JH7luBG2EmrXT5x6D3OVhFpko_MVfdmYToP2VmU-E1znw/6bh4hayu7j0wbgo/apks.rar"
+          ls -la apks.rar
+          file apks.rar
+          mkdir -p apks
+          7z x apks.rar -oapks/ -y
+          echo "=== Files in apks/ ==="
+          ls -la apks/
+          cd apks
+          for f in *.apk *.xapk *.apkm; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *xapk*|*apkm*)
+                echo "Extracting base APK from $f..."
+                mkdir -p tmpx
+                7z x "$f" -otmpx -y
+                BASE=$(find tmpx -name "*.apk" ! -name "*split*" | head -1)
+                if [ -n "$BASE" ]; then cp "$BASE" extracted_base.apk; fi
+                rm -rf tmpx
+                ;;
+            esac
+          done
+          for f in *.apk *.xapk *.apkm; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *vending*|*playstore*|*play.store*|*Phonesky*) mv "$f" playstore.apk ;;
+              *Play_Dienste*|*play.services*|*gms*|*GmsCore*) mv "$f" gms.apk ;;
+              *keymapper*|*key.mapper*|*sds100*) mv "$f" keymapper.apk ;;
+              *Infinix*|*infinix*|*launcher*) mv "$f" infinixlauncher.apk ;;
+              *free*fire*|*freefire*|*garena*) mv "$f" freefire.apk ;;
+            esac
+          done
+          if [ -f extracted_base.apk ]; then
+            echo "Using extracted base APK for launcher"
+            mv extracted_base.apk infinixlauncher.apk
+          fi
+          echo "=== Final APKs ==="
+          ls -la *.apk
+          cd ..
+
+      - name: Extract ISO
+        run: |
+          mkdir -p extracted
+          7z x android-x86.iso -oextracted/ -y
+
+      - name: Fix ACPI + Logo + Landscape
+        run: |
+          cd extracted
+          sed -i "s/quiet/quiet acpi_osi=! acpi_osi='Windows 2012' acpi_sleep=s3_bios,s3_mode i915.modeset=1 i915.enable_fbc=0 i915.enable_psr=0 intel_idle.max_cstate=1 video=1024x768/g" isolinux/isolinux.cfg
+          sed -i 's/MENU TITLE.*/MENU TITLE Window 7 - Free Fire Edition - Made by ABDUL REHMAN FAROOQI/g' isolinux/isolinux.cfg
+          cp ../infinix-logo.bmp isolinux/boot.splash
+
+      - name: Modify system
+        run: |
+          cd extracted
+          unsquashfs -d sysroot system.sfs
+          cd sysroot
+          ls -la
+          mkdir -p /tmp/stage/priv-app/GmsCore
+          mkdir -p /tmp/stage/priv-app/Phonesky
+          mkdir -p /tmp/stage/app/Keymapper
+          mkdir -p /tmp/stage/app/InfinixLauncher
+          mkdir -p /tmp/stage/app/FreeFire
+          cp ../../apks/gms.apk /tmp/stage/priv-app/GmsCore/GmsCore.apk
+          cp ../../apks/playstore.apk /tmp/stage/priv-app/Phonesky/Phonesky.apk
+          cp ../../apks/keymapper.apk /tmp/stage/app/Keymapper/Keymapper.apk
+          cp ../../apks/infinixlauncher.apk /tmp/stage/app/InfinixLauncher/InfinixLauncher.apk
+          cp ../../apks/freefire.apk /tmp/stage/app/FreeFire/FreeFire.apk
+          chmod 644 /tmp/stage/priv-app/GmsCore/GmsCore.apk
+          chmod 644 /tmp/stage/priv-app/Phonesky/Phonesky.apk
+          chmod 644 /tmp/stage/app/Keymapper/Keymapper.apk
+          chmod 644 /tmp/stage/app/InfinixLauncher/InfinixLauncher.apk
+          chmod 644 /tmp/stage/app/FreeFire/FreeFire.apk
+          debugfs -R "dump /build.prop /tmp/build.prop" system.img
+          sed -i 's|ro.product.name=.*|ro.product.name=Window 7|' /tmp/build.prop
+          sed -i 's|ro.product.brand=.*|ro.product.brand=Window|' /tmp/build.prop
+          sed -i 's|ro.product.model=.*|ro.product.model=Free Fire Edition|' /tmp/build.prop
+          sed -i 's|ro.build.display.id=.*|ro.build.display.id=WINDOW7-FREEFIRE|' /tmp/build.prop
+          sed -i 's|ro.build.fingerprint=.*|ro.build.fingerprint=window7/android/ff_pc/Window7:7.1/NMF26X/170000:user/release-keys|' /tmp/build.prop
+          echo 'ro.config.orientation=1' >> /tmp/build.prop
+          echo 'persist.sys.rotation=1' >> /tmp/build.prop
+          echo 'ro.config.activity_screen_timeout=600000' >> /tmp/build.prop
+          echo 'ro.launcher.preferred=com.smartsoft.infinixlauncher' >> /tmp/build.prop
+          debugfs -w -R "rm /build.prop" system.img
+          debugfs -w -R "write /tmp/build.prop /build.prop" system.img
+          debugfs -w -R "mkdir /priv-app" system.img 2>/dev/null || true
+          debugfs -w -R "mkdir /priv-app/GmsCore" system.img 2>/dev/null || true
+          debugfs -w -R "mkdir /priv-app/Phonesky" system.img 2>/dev/null || true
+          debugfs -w -R "write /tmp/stage/priv-app/GmsCore/GmsCore.apk /priv-app/GmsCore/GmsCore.apk" system.img
+          debugfs -w -R "write /tmp/stage/priv-app/Phonesky/Phonesky.apk /priv-app/Phonesky/Phonesky.apk" system.img
+          debugfs -w -R "write /tmp/stage/app/Keymapper/Keymapper.apk /app/Keymapper/Keymapper.apk" system.img
+          debugfs -w -R "write /tmp/stage/app/InfinixLauncher/InfinixLauncher.apk /app/InfinixLauncher/InfinixLauncher.apk" system.img
+          debugfs -w -R "write /tmp/stage/app/FreeFire/FreeFire.apk /app/FreeFire/FreeFire.apk" system.img
+          cd ..
+          rm -f system.sfs
+          mksquashfs sysroot system.sfs -comp xz
+          rm -rf sysroot
+
+      - name: Rebuild ISO
+        run: |
+          cd extracted
+          xorriso -as mkisofs -o ../Window7-FreeFire.iso -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -R -J -V "WINDOW7 FF" .
+          ls -la ../Window7-FreeFire.iso
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: window7-freefire
+          path: Window7-FreeFire.iso   
